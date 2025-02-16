@@ -21,6 +21,8 @@ import markdown
 import pandas as pd
 import numpy as np
 import imageio_ffmpeg as ffmpeg
+from dotenv import load_dotenv
+
 
 
 # Use get_ffmpeg_exe() for both converter and ffprobe.
@@ -46,7 +48,9 @@ os.makedirs(DATA_DIR, exist_ok=True)
 ###############################################
 # AIRPROXY Configuration
 ###############################################
-AIPROXY_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6IjI0ZjEwMDIzOTBAZHMuc3R1ZHkuaWl0bS5hYy5pbiJ9.5j9400SGrtncpZLZmrML6BuqlhZw18Oa9Q7q0PQO32E"  # Replace with your actual token
+load_dotenv()  # Loads environment variables from .env
+
+AIPROXY_TOKEN = os.environ.get("AIPROXY_TOKEN")
 AIPROXY_URL = "http://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
 
 ###############################################
