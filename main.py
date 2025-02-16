@@ -1,4 +1,5 @@
 import os
+import random
 import re
 import json
 import glob
@@ -9,7 +10,7 @@ import urllib.request
 import requests
 import ssl
 import base64
-from git import Repo
+from git import Repo, GitCommandError
 from datetime import datetime
 from flask import Flask, request, jsonify, make_response
 from bs4 import BeautifulSoup
@@ -22,22 +23,24 @@ import pandas as pd
 import numpy as np
 import imageio_ffmpeg as ffmpeg
 from dotenv import load_dotenv
+import string
+import sqlite3
+import duckdb
 
 
 
-# Use get_ffmpeg_exe() for both converter and ffprobe.
+
+
 AudioSegment.converter = ffmpeg.get_ffmpeg_exe()
 AudioSegment.ffprobe = ffmpeg.get_ffmpeg_exe()  # Using ffmpeg binary as a substitute for ffprobe.
 
 
-# For computing embeddings in A9
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 app = Flask(__name__)
 
-# Define folders for artifacts and data
 ARTIFACTS_DIR = "artifacts"
 DATA_DIR = "data"
 
@@ -58,11 +61,7 @@ AIPROXY_URL = "http://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
 ###############################################
 
 def op_a1(task: str) -> str:
-    """
-    A1. Install uv (if required) and run the remote script from:
-    https://raw.githubusercontent.com/sanand0/tools-in-data-science-public/tds-2025-01/project-1/datagen.py 
-    with ${user.email} as the only argument.
-    """
+   
     match = re.search(r'[\w\.-]+@[\w\.-]+', task)
     user_email = match.group(0) if match else "default@example.com"
     # Define project root and data directory
@@ -105,11 +104,7 @@ def op_a1(task: str) -> str:
     return f"Executed datagen.py with email {user_email}"
 
 def op_a2(task: str) -> str:
-    """
-    A2. Format the contents of /data/format.md using prettier@3.4.2, updating the file in-place.
-    This function checks if Prettier is installed. If not, it installs it globally using npm.
-    Then it runs Prettier to format the Markdown file.
-    """
+   
     file_path = os.path.join(DATA_DIR, "format.md")
     if not os.path.exists(file_path):
         raise Exception(f"{file_path} does not exist.")
@@ -157,15 +152,7 @@ def op_a2(task: str) -> str:
     return f"Formatted {file_path} using prettier@3.4.2"
 
 def op_a3(task: str) -> str:
-    """
-    A3. Count the number of Wednesdays in /data/dates.txt and write just the number to /data/dates-wednesdays.txt.
-    
-    The date file may contain dates in various formats such as:
-      - "2019-03-23"
-      - "Apr 21, 2005"
-      - "2003/03/18 21:45:29"
-      - "07-Oct-2014"
-    """
+   
     input_path = os.path.join(DATA_DIR, "dates.txt")
     output_path = os.path.join(DATA_DIR, "dates-wednesdays.txt")
     if not os.path.exists(input_path):
@@ -203,10 +190,7 @@ def op_a3(task: str) -> str:
     return f"Counted Wednesdays and wrote {count} to {output_path}"
 
 def op_a4(task: str) -> str:
-    """
-    A4. Sort the array of contacts in /data/contacts.json by last_name, then first_name,
-    and write the result to /data/contacts-sorted.json.
-    """
+    
     input_path = os.path.join(DATA_DIR, "contacts.json")
     output_path = os.path.join(DATA_DIR, "contacts-sorted.json")
     if not os.path.exists(input_path):
@@ -226,10 +210,7 @@ def op_a4(task: str) -> str:
     return f"Sorted contacts and wrote output to {output_path}"
 
 def op_a5(task: str) -> str:
-    """
-    A5. Write the first line of the 10 most recent .log files in /data/logs/ to /data/logs-recent.txt,
-    most recent first.
-    """
+    
     logs_dir = os.path.join(DATA_DIR, "logs")
     output_path = os.path.join(DATA_DIR, "logs-recent.txt")
     log_files = glob.glob(os.path.join(logs_dir, "*.log"))
@@ -249,10 +230,7 @@ def op_a5(task: str) -> str:
     return f"Wrote the first lines of 10 most recent logs to {output_path}"
 
 def op_a6(task: str) -> str:
-    """
-    A6. Find all Markdown (.md) files in /data/docs/.
-    For each file, extract the first occurrence of an H1 (line starting with '# ') and create an index file.
-    """
+    
     docs_dir = os.path.join(DATA_DIR, "docs")
     output_path = os.path.join(DATA_DIR, "docs", "index.json")
     if not os.path.exists(docs_dir):
@@ -276,10 +254,7 @@ def op_a6(task: str) -> str:
     return f"Created Markdown index at {output_path}"
 
 def op_a7(task: str) -> str:
-    """
-    A7. /data/email.txt contains an email message.
-    Use an LLM (via AIRPROXY) to extract the sender’s email address and write it to /data/email-sender.txt.
-    """
+    
     input_path = os.path.join(DATA_DIR, "email.txt")
     output_path = os.path.join(DATA_DIR, "email-sender.txt")
     if not os.path.exists(input_path):
@@ -335,28 +310,7 @@ def op_a7(task: str) -> str:
     return f"Extracted sender email and wrote it to {output_path}"
 
 def op_a8(task: str) -> str:
-    """
-    A8. /data/credit-card.png contains a credit card number.
-    Read the image, encode it in Base64, and send it to the LLM via AIRPROXY using the specified payload format:
-    
-    {
-      "model": "gpt-4o-mini",
-      "messages": [
-        {
-          "role": "user",
-          "content": [
-            {"type": "text", "text": "Extract the credit card number from this image."},
-            {
-              "type": "image_url",
-              "image_url": { "url": "data:image/png;base64,$IMAGE_BASE64" }
-            }
-          ]
-        }
-      ]
-    }
-    
-    Extract the card number from the LLM response and write it (without spaces) to /data/credit-card.txt.
-    """
+  
     input_path = os.path.join(DATA_DIR, "credit_card.png")
     output_path = os.path.join(DATA_DIR, "credit-card.txt")
     if not os.path.exists(input_path):
@@ -427,10 +381,7 @@ def op_a8(task: str) -> str:
     return f"Extracted credit card number and wrote it to {output_path}"
 
 def get_embedding(text: str) -> np.array:
-    """
-    Get the embedding for the given text using the AIRPROXY embeddings API
-    with the model "text-embedding-3-small".
-    """
+    
     headers = {
         "Authorization": f"Bearer {AIPROXY_TOKEN}",
         "Content-Type": "application/json"
@@ -454,18 +405,11 @@ def get_embedding(text: str) -> np.array:
     return np.array(embedding)
 
 def cosine_similarity(vec1: np.array, vec2: np.array) -> float:
-    """
-    Compute the cosine similarity between two vectors.
-    """
+    
     return float(np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2)))
 
 def op_a9(task: str) -> str:
-    """
-    A9. /data/comments.txt contains a list of comments, one per line.
-    Using the embeddings model "text-embedding-3-small" via AIRPROXY, compute embeddings
-    for each comment, then find the pair with the highest cosine similarity.
-    Write the two most similar comments (one per line) to /data/comments-similar.txt.
-    """
+   
     input_path = os.path.join(DATA_DIR, "comments.txt")
     output_path = os.path.join(DATA_DIR, "comments-similar.txt")
     if not os.path.exists(input_path):
@@ -509,11 +453,7 @@ def op_a9(task: str) -> str:
     return f"Found similar comments and wrote them to {output_path}"
 
 def op_a10(task: str) -> str:
-    """
-    A10. Query the SQLite database /data/ticket-sales.db for tickets with type 'Gold'
-    and calculate the total sales (units * price) for those rows.
-    Write the number to /data/ticket-sales-gold.txt.
-    """
+    
     db_path = os.path.join(DATA_DIR, "ticket-sales.db")
     output_path = os.path.join(DATA_DIR, "ticket-sales-gold.txt")
     if not os.path.exists(db_path):
@@ -538,10 +478,7 @@ def op_a10(task: str) -> str:
 
 
 def llm_extract_params(system_prompt: str, task: str) -> dict:
-    """
-    Sends a system+user prompt to AIRPROXY and expects a JSON response with parameters.
-    This is a helper function that encapsulates the LLM extraction process.
-    """
+   
     payload = {
         "model": "gpt-4o-mini",
         "messages": [
@@ -567,11 +504,7 @@ def llm_extract_params(system_prompt: str, task: str) -> dict:
         raise Exception("Failed to parse LLM extraction response: " + str(e))
 
 def op_b3(task: str) -> str:
-    """
-    B3. Fetch data from an API and save it.
-    Expects the task to include an API endpoint URL and an output file path.
-    Uses LLM to extract parameters, then fetches the data via HTTP.
-    """
+   
     system_prompt = (
         "Extract the following parameters from the task as JSON: "
         "{'api_url': <string>, 'output_file': <string>}."
@@ -596,55 +529,51 @@ def op_b3(task: str) -> str:
     return f"Fetched data from {api_url} and saved to {output_path}"
 
 def op_b4(task: str) -> str:
-    """
-    B4. Clone a git repository and make a commit.
-    Expects the task to include the repository URL, an optional branch, a file path to modify or add,
-    and a commit message.
-    Uses LLM to extract parameters, then clones the repo, makes a dummy change, commits, and pushes.
-    """
+   
     system_prompt = (
-        "Extract the following parameters from the task as JSON: "
-        "{'repo_url': <string>, 'branch': <string, optional>, 'file_to_modify': <string optional>, 'commit_message': <string optional>}."
-        "For example: {\"repo_url\": \"https://github.com/user/repo\", \"branch\": \"main\", \"file_to_modify\": \"README.md\", \"commit_message\": \"Update README\"}."
+        "Extract the following parameters from the task as JSON (all parameters are optional): "
+        "{'repo_url': <string, default 'https://github.com/kathaniitm/student-marks'>, "
+        "'branch': <string, default 'main'>, "
+        "'commit_message': <string, default 'Empty commit by automation agent'>}.\n"
+        "For example: {\"repo_url\": \"https://github.com/kathaniitm/student-marks\", "
+        "\"branch\": \"main\", \"commit_message\": \"Empty commit by automation agent\"}."
     )
     params = llm_extract_params(system_prompt, task)
-    repo_url = params.get("repo_url")
+    repo_url = params.get("repo_url") or 'https://github.com/kathaniitm/student-marks'
     print(repo_url)
     branch = params.get("branch") or "main"
-    file_to_modify = params.get("file_to_modify")
     commit_message = params.get("commit_message") or "this is a test commit"
-    if not repo_url or not file_to_modify or not commit_message:
-        # raise Exception("Missing parameters for B4 in the task.")
-        pass
-    
-    # Clone repository into a temporary directory.
+     # Clone repository into a temporary directory.
     clone_dir = os.path.join(os.getcwd(), "temp_repo")
     if os.path.exists(clone_dir):
         subprocess.run(["rm", "-rf", clone_dir])
-    repo = Repo.clone_from(repo_url, clone_dir, branch=branch)
     
-    # # For demonstration, append a dummy line to the specified file.
-    # file_path = os.path.join(clone_dir, file_to_modify)
-    # with open(file_path, "a", encoding="utf-8") as f:
-    #     f.write("\nDummy update via automation agent.\n")
+    try:
+        repo = Repo.clone_from(repo_url, clone_dir, branch=branch)
+    except GitCommandError as e:
+        raise Exception("Failed to clone repository: " + str(e))
     
-    # repo.index.add([file_to_modify])
-    repo.index.commit(commit_message)
-    # Push the commit.
-    origin = repo.remote(name='origin')
-    origin.push()
+    try:
+        # Create an empty commit.
+        repo.git.commit(allow_empty=True, m=commit_message)
+    except GitCommandError as e:
+        raise Exception("Failed to create empty commit: " + str(e))
     
-    # Clean up clone directory.
-    subprocess.run(["rm", "-rf", clone_dir])
-    return f"Cloned repo {repo_url}, committed change to {file_to_modify}, and pushed with message '{commit_message}'"
+    try:
+        # Retrieve the git status after the commit.
+        status = repo.git.status()
+        print("Git status after commit:\n", status)
+    except GitCommandError as e:
+        raise Exception("Failed to get git status: " + str(e))
+
+    # Clean up the clone directory.
+    # subprocess.run(["rm", "-rf", clone_dir])
+    
+    return f"Cloned repo {repo_url} and created an empty commit with message '{commit_message}'"
+
 
 def op_b6(task: str) -> str:
-    """
-    B6. Extract data from (i.e., scrape) a website.
-    Expects the task to include the website URL and a CSS selector (or XPath) to extract data.
-    Uses LLM to extract parameters, then uses requests and BeautifulSoup to scrape data.
-    Saves the scraped data to the specified output file.
-    """
+    
     system_prompt = (
             "Extract the following parameter from the task as JSON: {'url': <string>}."
             "For example: {\"url\": \"https://example.com\"}."
@@ -675,12 +604,7 @@ def op_b6(task: str) -> str:
     return f"Scraped data from {url} using selector '{selector}' and saved to {output_path}"
 
 def op_b7(task: str) -> str:
-    """
-    B7. Compress or resize an image.
-    Expects the task to include the image file path, target width and height or quality,
-    and an output file path.
-    Uses LLM to extract parameters, then uses Pillow to resize and/or compress the image.
-    """
+   
     system_prompt = (
         "Extract the following parameters from the task as JSON (all parameters are optional): "
         "{'image_path': <string>, 'target_width': <int>, 'target_height': <int>, 'quality': <int>, 'output_file': <string>}."
@@ -892,6 +816,198 @@ def op_b10(task: str) -> str:
     
     return f"Converted CSV from {csv_file} to JSON and saved to {output_path}"
 
+def op_b5(task: str) -> str:
+    """
+    B5. Run a SQL query on a default SQLite database.
+    
+    This function expects the task to optionally include:
+      - query: The SQL query to run (default: "SELECT name FROM sqlite_master WHERE type='table'")
+    
+    If the default database (data/default.db) does not exist, a sample SQLite database is created with a sample_table.
+    The query is then executed on this database, and the results are saved as JSON to data/query_result.json.
+    """
+    system_prompt = (
+        "Extract the following parameter from the task as JSON (optional): "
+        "{'query': <string, default \"SELECT name FROM sqlite_master WHERE type='table'\">}.\n"
+        "For example: {\"query\": \"SELECT * FROM sample_table\"}."
+    )
+    params = llm_extract_params(system_prompt, task)
+    query = params.get("query") or "SELECT name FROM sqlite_master WHERE type='table'"
+
+    # Define default database path.
+    default_db_path = os.path.join(os.getcwd(), "data", "default.db")
+    os.makedirs(os.path.dirname(default_db_path), exist_ok=True)
+    
+    # If the default DB does not exist, create it with a sample table.
+    if not os.path.exists(default_db_path):
+        conn = sqlite3.connect(default_db_path)
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS sample_table (id INTEGER PRIMARY KEY, name TEXT)")
+        cursor.execute("INSERT INTO sample_table (name) VALUES ('Alice'), ('Bob')")
+        conn.commit()
+        conn.close()
+    
+    # Execute the query on the default database.
+    conn = sqlite3.connect(default_db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    try:
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        results = [dict(row) for row in rows]
+    except Exception as e:
+        conn.close()
+        raise Exception("Failed to execute query: " + str(e))
+    conn.close()
+    
+    # Save the results as JSON.
+    output_path = os.path.join(os.getcwd(), "data", "query_result.json")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2)
+    
+    return f"Executed SQL query on default SQLite DB and saved results to {output_path}"
+
+def op_convert_json_to_csv(task: str) -> str:
+    """
+    Convert a JSON file to CSV.
+    Expects the task to optionally include:
+      - json_url: URL or local path to the JSON file (default: "https://jsonplaceholder.typicode.com/todos")
+      - output_csv: Output CSV file path (default: "data/output.csv")
+    
+    If json_url is a URL, the function downloads it, converts JSON to CSV using pandas, and saves the CSV.
+    """
+    system_prompt = (
+        "Extract the following parameters from the task as JSON (both parameters are optional): "
+        "{'json_url': <string, default 'https://jsonplaceholder.typicode.com/todos'>, "
+        "'output_csv': <string, default 'data/output.csv'>}."
+    )
+    params = llm_extract_params(system_prompt, task)
+    json_url = params.get("json_url") or "https://jsonplaceholder.typicode.com/todos"
+    output_csv = params.get("output_csv") or "data/output.csv"
+    
+    # Determine if json_url is a URL or local file.
+    if json_url.startswith("http"):
+        response = requests.get(json_url)
+        if response.status_code != 200:
+            raise Exception("Failed to download JSON from URL: " + json_url)
+        data = response.json()
+    else:
+        local_json_path = os.path.join(os.getcwd(), json_url)
+        if not os.path.exists(local_json_path):
+            raise Exception(f"JSON file {local_json_path} does not exist.")
+        with open(local_json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    
+    # Convert JSON data to a DataFrame and then to CSV.
+    df = pd.DataFrame(data)
+    output_path = os.path.join(os.getcwd(), output_csv)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    df.to_csv(output_path, index=False)
+    
+    return f"Converted JSON from {json_url} to CSV and saved to {output_path}"
+
+def op_translate_text(task: str) -> str:
+    """
+    Translate text to another language using the LLM.
+    Expects the task to optionally include:
+      - text: The text to translate (default: "Hello, how are you?")
+      - target_lang: The target language code (default: "es")
+    
+    The function sends a prompt to the LLM (via AIRPROXY) asking it to translate the text.
+    It returns the translated text as a string.
+    """
+    # Use LLM to extract parameters from the task
+    system_prompt = (
+        "Extract the following parameters from the task as JSON (both parameters are optional): "
+        "{'text': <string, default 'Hello, how are you?'>, 'target_lang': <string, default 'es'>}."
+        "For example: {\"text\": \"Hello, how are you?\", \"target_lang\": \"es\"}."
+    )
+    params = llm_extract_params(system_prompt, task)
+    text = params.get("text") or "Hello, how are you?"
+    target_lang = params.get("target_lang") or "es"
+
+    # Build a chat prompt to instruct the LLM to translate the text.
+    # We include the target language in the prompt.
+    translation_system_prompt = (
+        "You are a translation assistant. Translate the following text from English to "
+        f"{target_lang}. Return only the translated text as plain text, with no additional commentary."
+    )
+    # Construct the payload for AIRPROXY's chat completion endpoint
+    payload = {
+        "model": "gpt-4o-mini",  # Adjust as needed.
+        "messages": [
+            {"role": "system", "content": translation_system_prompt},
+            {"role": "user", "content": text}
+        ],
+        "temperature": 0
+    }
+    headers = {
+        "Authorization": f"Bearer {os.environ.get('AIPROXY_TOKEN')}",
+        "Content-Type": "application/json"
+    }
+    
+    # Send the request to the LLM via AIRPROXY
+    chat_url = "https://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
+    response = requests.post(chat_url, headers=headers, json=payload)
+    if response.status_code != 200:
+        raise Exception("AIRPROXY LLM failed: " + response.text)
+    
+    result = response.json()
+    try:
+        assistant_reply = result["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        raise Exception("Failed to parse LLM response: " + str(e))
+    
+    return f"Translated text: {assistant_reply}"
+
+def op_extract_metadata(task: str) -> str:
+
+    system_prompt = (
+        "Extract the following parameter from the task as JSON (optional): "
+        "{'image_url': <string, default 'https://i.sstatic.net/l60Hf.png'>}."
+    )
+    params = llm_extract_params(system_prompt, task)
+    image_url = params.get("image_url") or "https://i.sstatic.net/l60Hf.png"
+    
+    # Download the image.
+    response = requests.get(image_url)
+    if response.status_code != 200:
+        raise Exception("Failed to download image from URL: " + image_url)
+    
+    try:
+        image = Image.open(BytesIO(response.content))
+        exif_data = image._getexif()  # May return None if no EXIF data is available.
+        if exif_data is None:
+            exif_data = {}
+    except Exception as e:
+        raise Exception("Failed to extract metadata: " + str(e))
+    
+    return f"Extracted metadata: {json.dumps(exif_data, indent=2)}"
+
+def op_generate_password(task: str) -> str:
+
+    system_prompt = (
+        "Extract the following parameters from the task as JSON (both parameters are optional): "
+        "{'username': <string, default 'defaultUser'>, 'length': <int, default 16>}."
+    )
+    params = llm_extract_params(system_prompt, task)
+    username = params.get("username") or "defaultUser"
+    try:
+        length = int(params.get("length") or 16)
+    except Exception:
+        length = 16
+
+    # Create a pool of characters: uppercase, lowercase, digits, and punctuation.
+    pool = string.ascii_letters + string.digits + string.punctuation
+    # Generate a random password.
+    password = ''.join(random.SystemRandom().choice(pool) for _ in range(length))
+    # Optionally, incorporate the username into the password as a prefix/suffix.
+    # Here, we'll simply prepend the username (if you wish, you can add more complex logic).
+    final_password = f"{username}_{password}"
+    
+    return f"Generated password: {final_password}"
+
+
 ###############################################
 # Task Parsing / Dispatching Function
 ###############################################
@@ -923,7 +1039,11 @@ def process_operation_task(task: str) -> str:
         "B7: Compress or resize an image.\n"
         "B8: Transcribe audio from an MP3 file.\n"
         "B9: Convert Markdown to HTML.\n"
-        "B10: Write an API endpoint that filters a CSV file and returns JSON data.\n\n"
+        "B10: Write an API endpoint that filters a CSV file and returns JSON data.\n"
+        "B11: Convert JSON file to CSV .\n"
+        "B12: Translate Text to Another Language.\n"
+        "B13: Extract Metadata from Files.\n"
+        "B14: Dynamic most complext Password generator .\n\n"
         "Based on the user's task description, determine which one of these operations to execute."
         "Return your answer strictly as a JSON object with a single field 'operation' whose value is the operation code "
         "(e.g., {\"operation\": \"A3\"}). Do not include any additional text."
@@ -976,26 +1096,34 @@ def process_operation_task(task: str) -> str:
         return op_a7(task) 
     elif operation == "A8":
         return op_a8(task) 
-    # elif operation == "A9":
-    #     return op_a9(task)
+    elif operation == "A9":
+        return op_a9(task)
     elif operation == "A10":
         return op_a10(task)
     elif operation == "B3":
         return op_b3(task)
-    # elif operation == "B4":
-    #     return op_b4(task)
+    elif operation == "B4":
+        return op_b4(task)
     # elif operation == "B5":
     #     return op_b5(task)
     elif operation == "B6":
         return op_b6(task)
     elif operation == "B7":
         return op_b7(task)
-    # elif operation == "B8":
-    #     return op_b8(task)
+    elif operation == "B8":
+        return op_b8(task)
     elif operation == "B9":
         return op_b9(task)
     elif operation == "B10":
         return op_b10(task)
+    elif operation == "B11":
+        return op_convert_json_to_csv(task)
+    elif operation == "B12":
+        return op_translate_text(task)
+    elif operation == "B13":
+        return op_extract_metadata(task)
+    elif operation == "B14":
+        return op_generate_password(task)
     else:
         raise ValueError("Unrecognized operation from LLM: " + str(task))
 
@@ -1047,4 +1175,4 @@ def read_file():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=True)
