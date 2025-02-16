@@ -1,0 +1,11 @@
+requests
+GitPython
+flask
+beautifulsoup4
+pillow
+pydub
+speechrecognition
+markdown
+pandas
+numpy
+imageio-ffmpeg
